@@ -1,0 +1,4 @@
+## Append samples you want in your CSV to this file as resources ##
+resources:
+- elk_v1alpha1_svelk.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples
