@@ -22,13 +22,18 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
-      securityContext:
-        runAsNonRoot: true
+# TODO: Used only during testing to speed up development. Pod runs faster on SV master VM rather than as Pod VM.
+      hostNetwork: true
+#      securityContext:
+#        runAsNonRoot: true
       containers:
       - command:
         - /manager
         args:
-        - --leader-elect
+# TODO: disabling leader election for now. Take care of deleting the existing replica during updates.
+#        - --leader-elect
+        - --metrics-bind-address=:18080
+        - --health-probe-bind-address=:18081
         image: controller:latest
         name: manager
         securityContext:
@@ -36,13 +41,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /healthz
-            port: 8081
+            port: 18081
           initialDelaySeconds: 15
           periodSeconds: 20
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 8081
+            port: 18081
           initialDelaySeconds: 5
           periodSeconds: 10
         resources:
@@ -54,3 +59,14 @@ spec:
             memory: 512Mi
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
+# TODO: Remove this when the operator needs to be run in workload namespace.
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+          operator: Exists
+        - effect: NoSchedule
+          key: kubeadmNode
+          operator: Equal
+          value: master
+      nodeSelector:
+        node-role.kubernetes.io/master: ""

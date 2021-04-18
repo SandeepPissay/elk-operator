@@ -29,13 +29,21 @@ type SvElkSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of SvElk. Edit svelk_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	PersistenceStoragePolicy string `json:"persistencestoragepolicy,omitempty"`
+	DiskSizePerReplica       string `json:"disksizeperreplica,omitempty"`
+}
+
+type StepStatus struct {
+	Step     string `json:"step"`
+	Status   string `json:"status"`
+	ErrorMsg string `json:"errormsg,omitempty"`
 }
 
 // SvElkStatus defines the observed state of SvElk
 type SvElkStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	StepStatusDetails []StepStatus `json:"stepstatusdetails,omitempty"`
 }
 
 //+kubebuilder:object:root=true

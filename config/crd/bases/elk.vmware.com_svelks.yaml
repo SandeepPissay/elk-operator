@@ -36,13 +36,33 @@ spec:
           spec:
             description: SvElkSpec defines the desired state of SvElk
             properties:
-              foo:
+              disksizeperreplica:
+                type: string
+              persistencestoragepolicy:
                 description: Foo is an example field of SvElk. Edit svelk_types.go
                   to remove/update
                 type: string
             type: object
           status:
             description: SvElkStatus defines the observed state of SvElk
+            properties:
+              stepstatusdetails:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
+                items:
+                  properties:
+                    errormsg:
+                      type: string
+                    status:
+                      type: string
+                    step:
+                      type: string
+                  required:
+                  - status
+                  - step
+                  type: object
+                type: array
             type: object
         type: object
     served: true
