@@ -1,7 +1,7 @@
 apiVersion: elk.vmware.com/v1alpha1
 kind: SvElk
 metadata:
-  name: svelk-sample
+  name: elk
 spec:
-  # Add fields here
-  foo: bar
+  persistencestoragepolicy: "vsan-default-storage-policy"
+  disksizeperreplica: "30Gi"
