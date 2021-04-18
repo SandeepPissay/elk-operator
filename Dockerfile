@@ -16,7 +16,8 @@ COPY controllers/ controllers/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager main.go
-RUN git clone https://github.com/SandeepPissay/helm-charts.git wcp-elk && cd wcp-elk && git checkout -t remotes/origin/wcp-elk
+RUN git clone https://github.com/SandeepPissay/helm-charts.git wcp-elk && cd wcp-elk && git checkout -t remotes/origin/wcp-elk && \
+    cd /workspace && curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 && chmod 700 get_helm.sh && ./get_helm.sh
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details

@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 
 	elkv1alpha1 "github.com/SandeepPissay/elk-operator/api/v1alpha1"
 )
@@ -41,6 +42,7 @@ type SvElkReconciler struct {
 
 const (
 	EsCreateSecret = "ES_CREATE_SECRET"
+	EsInstall      = "ES_INSTALL"
 
 	StepStatusPass = "PASS"
 	StepStatusFail = "FAIL"
@@ -80,11 +82,56 @@ func (r *SvElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	r.Log.Info(fmt.Sprintf("Loaded svelkInstance: %+v", svelkInstance))
 
+	// Step 1: Create elastic search secrets.
 	err = r.createEsSecrets(ctx, svelkInstance)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
+
+	// Step 2: Install elastic search.
+	err = r.installElasticSearch(ctx, svelkInstance)
+	if err != nil {
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
+
 	return ctrl.Result{}, err
+}
+
+func (r *SvElkReconciler) installElasticSearch(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
+	stepStatus := r.getStepStatus(svelkInstance, EsInstall)
+	if stepStatus == nil {
+		stepStatus = &elkv1alpha1.StepStatus{Step: EsInstall}
+		svelkInstance.Status.StepStatusDetails = append(svelkInstance.Status.StepStatusDetails, *stepStatus)
+	}
+	if stepStatus.Status != StepStatusPass {
+		err := r.runCommand("/wcp-elk/elasticsearch/examples/security", "sh", "./cleanup.sh", "observability")
+		if err != nil {
+			errMsg := "failed to cleanup elastic search."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		err = r.runCommand("/wcp-elk/elasticsearch/examples/security", "sh", "./install.sh", "observability")
+		if err != nil {
+			errMsg := "failed to install elastic search."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		// Success case
+		stepStatus.Status = StepStatusPass
+		stepStatus.ErrorMsg = ""
+		err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+		if err != nil {
+			r.Log.Error(err, "Failed to mark ES_CREATE_SECRET as success.")
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *SvElkReconciler) createEsSecrets(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
@@ -114,6 +161,7 @@ func (r *SvElkReconciler) createEsSecrets(ctx context.Context, svelkInstance *el
 		}
 		// Success case
 		stepStatus.Status = StepStatusPass
+		stepStatus.ErrorMsg = ""
 		err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 		if err != nil {
 			r.Log.Error(err, "Failed to mark ES_CREATE_SECRET as success.")
