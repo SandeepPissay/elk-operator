@@ -1,19 +1,17 @@
 domain: vmware.com
-layout:
-- go.kubebuilder.io/v3
-plugins:
-  manifests.sdk.operatorframework.io/v2: {}
-  scorecard.sdk.operatorframework.io/v2: {}
-projectName: elk-operator
+multigroup: true
 repo: github.com/SandeepPissay/elk-operator
 resources:
+- group: elk
+  kind: SvElk
+  version: v1alpha1
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
   domain: vmware.com
-  group: elk
-  kind: SvElk
-  path: github.com/SandeepPissay/elk-operator/api/v1alpha1
+  group: elk.vmware.com
+  kind: TkcElk
+  path: github.com/SandeepPissay/elk-operator/apis/elk.vmware.com/v1alpha1
   version: v1alpha1
 version: "3"

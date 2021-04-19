@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/SandeepPissay/elk-operator/apis/elk.vmware.com/v1alpha1"
 	"github.com/go-logr/logr"
 	"io"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -35,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 
-	elkv1alpha1 "github.com/SandeepPissay/elk-operator/api/v1alpha1"
+	elkv1alpha1 "github.com/SandeepPissay/elk-operator/apis/batch/v1alpha1"
 )
 
 // SvElkReconciler reconciles a SvElk object
@@ -178,6 +179,25 @@ func (r *SvElkReconciler) pollTkcAndDeployElk() {
 				if found {
 					if phase == "running" {
 						r.Log.Info(fmt.Sprintf("TKC %s is found and running", d.GetName()))
+						tkcCr := &v1alpha1.TkcElk{
+							TypeMeta: metav1.TypeMeta{
+								Kind:       "TkcElk",
+								APIVersion: "elk.vmware.com.vmware.com/v1alpha1",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      d.GetName(),
+								Namespace: d.GetNamespace(),
+							},
+							Spec: v1alpha1.TkcElkSpec{},
+						}
+						err = r.Client.Create(context.TODO(), tkcCr)
+						if err != nil {
+							if errors.IsAlreadyExists(err) {
+								r.Log.Info(fmt.Sprintf("Tkc CR %s in namespace %s already exists. Continuing...", d.GetName(), d.GetNamespace()))
+								continue
+							}
+							r.Log.Error(err, "failed to create Tkc CR")
+						}
 					} else {
 						r.Log.Info(fmt.Sprintf("TKC %s is found but not running. Phase: %s", d.GetName(), phase))
 					}

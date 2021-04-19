@@ -1,0 +1,24 @@
+# permissions for end users to edit tkcelks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tkcelk-editor-role
+rules:
+- apiGroups:
+  - elk.vmware.com.vmware.com
+  resources:
+  - tkcelks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - elk.vmware.com.vmware.com
+  resources:
+  - tkcelks/status
+  verbs:
+  - get

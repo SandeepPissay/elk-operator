@@ -31,8 +31,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	elkv1alpha1 "github.com/SandeepPissay/elk-operator/api/v1alpha1"
-	"github.com/SandeepPissay/elk-operator/controllers"
+	elkv1alpha1 "github.com/SandeepPissay/elk-operator/apis/batch/v1alpha1"
+	elkvmwarecomv1alpha1 "github.com/SandeepPissay/elk-operator/apis/elk.vmware.com/v1alpha1"
+	controllers "github.com/SandeepPissay/elk-operator/controllers/batch"
+	elkvmwarecomcontrollers "github.com/SandeepPissay/elk-operator/controllers/elk.vmware.com"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -45,6 +47,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(elkv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(elkvmwarecomv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -84,6 +87,14 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "SvElk")
+		os.Exit(1)
+	}
+	if err = (&elkvmwarecomcontrollers.TkcElkReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("elk.vmware.com").WithName("TkcElk"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "TkcElk")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
