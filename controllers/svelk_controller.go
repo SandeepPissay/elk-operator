@@ -43,6 +43,7 @@ type SvElkReconciler struct {
 const (
 	EsCreateSecret = "ES_CREATE_SECRET"
 	EsInstall      = "ES_INSTALL"
+	KibanaInstall  = "KIBANA_INSTALL"
 
 	StepStatusPass = "PASS"
 	StepStatusFail = "FAIL"
@@ -85,16 +86,61 @@ func (r *SvElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// Step 1: Create elastic search secrets.
 	err = r.createEsSecrets(ctx, svelkInstance)
 	if err != nil {
+		r.Log.Error(err, "Failed to create secrets for elastic search. Requeuing after 30 seconds.")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
 	// Step 2: Install elastic search.
 	err = r.installElasticSearch(ctx, svelkInstance)
 	if err != nil {
+		r.Log.Error(err, "Failed to install elastic search. Requeuing after 30 seconds.")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
+	// Step 3: Install Kibana.
+	err = r.installKibana(ctx, svelkInstance)
+	if err != nil {
+		r.Log.Error(err, "Failed to install Kibana. Requeuing after 30 seconds.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
 	return ctrl.Result{}, err
+}
+
+func (r *SvElkReconciler) installKibana(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
+	stepStatus := r.getStepStatus(svelkInstance, KibanaInstall)
+	if stepStatus == nil {
+		stepStatus = &elkv1alpha1.StepStatus{Step: KibanaInstall}
+		svelkInstance.Status.StepStatusDetails = append(svelkInstance.Status.StepStatusDetails, *stepStatus)
+	}
+	if stepStatus.Status != StepStatusPass {
+		err := r.runCommand("/wcp-elk/kibana/examples/security", "sh", "./cleanup.sh", "observability")
+		if err != nil {
+			errMsg := "failed to cleanup kibana."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		err = r.runCommand("/wcp-elk/kibana/examples/security", "sh", "./install.sh", "observability")
+		if err != nil {
+			errMsg := "failed to install kibana."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		// Success case
+		stepStatus.Status = StepStatusPass
+		stepStatus.ErrorMsg = ""
+		err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+		if err != nil {
+			r.Log.Error(err, "Failed to mark INSTALL_KIBANA as success.")
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *SvElkReconciler) installElasticSearch(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
@@ -127,7 +173,7 @@ func (r *SvElkReconciler) installElasticSearch(ctx context.Context, svelkInstanc
 		stepStatus.ErrorMsg = ""
 		err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 		if err != nil {
-			r.Log.Error(err, "Failed to mark ES_CREATE_SECRET as success.")
+			r.Log.Error(err, "Failed to mark ES_INSTALL as success.")
 			return err
 		}
 	}
