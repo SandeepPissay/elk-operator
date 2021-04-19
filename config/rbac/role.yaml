@@ -32,3 +32,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - elk.vmware.com.vmware.com
+  resources:
+  - tkcelks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - elk.vmware.com.vmware.com
+  resources:
+  - tkcelks/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - elk.vmware.com.vmware.com
+  resources:
+  - tkcelks/status
+  verbs:
+  - get
+  - patch
+  - update
