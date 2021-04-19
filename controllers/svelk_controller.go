@@ -41,9 +41,10 @@ type SvElkReconciler struct {
 }
 
 const (
-	EsCreateSecret = "ES_CREATE_SECRET"
-	EsInstall      = "ES_INSTALL"
-	KibanaInstall  = "KIBANA_INSTALL"
+	EsCreateSecret  = "ES_CREATE_SECRET"
+	EsInstall       = "ES_INSTALL"
+	KibanaInstall   = "KIBANA_INSTALL"
+	FileBeatInstall = "FILEBEAT_INSTALL"
 
 	StepStatusPass = "PASS"
 	StepStatusFail = "FAIL"
@@ -103,7 +104,52 @@ func (r *SvElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		r.Log.Error(err, "Failed to install Kibana. Requeuing after 30 seconds.")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
+
+	// Step 4: Install file beats for log forwarding.
+	err = r.installFileBeat(ctx, svelkInstance)
+	if err != nil {
+		r.Log.Error(err, "Failed to install FileBeat. Requeuing after 30 seconds.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
+
 	return ctrl.Result{}, err
+}
+
+func (r *SvElkReconciler) installFileBeat(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
+	stepStatus := r.getStepStatus(svelkInstance, FileBeatInstall)
+	if stepStatus == nil {
+		stepStatus = &elkv1alpha1.StepStatus{Step: FileBeatInstall}
+		svelkInstance.Status.StepStatusDetails = append(svelkInstance.Status.StepStatusDetails, *stepStatus)
+	}
+	if stepStatus.Status != StepStatusPass {
+		err := r.runCommand("/wcp-elk/filebeat/examples/security", "sh", "./cleanup.sh", "vmware-system-beats")
+		if err != nil {
+			errMsg := "failed to cleanup file beat."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		err = r.runCommand("/wcp-elk/filebeat/examples/security", "sh", "./install.sh", "vmware-system-beats")
+		if err != nil {
+			errMsg := "failed to install file beat."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		// Success case
+		stepStatus.Status = StepStatusPass
+		stepStatus.ErrorMsg = ""
+		err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+		if err != nil {
+			r.Log.Error(err, "Failed to mark FILEBEAT_INSTALL as success.")
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *SvElkReconciler) installKibana(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
@@ -119,7 +165,7 @@ func (r *SvElkReconciler) installKibana(ctx context.Context, svelkInstance *elkv
 			r.Log.Error(err, errMsg)
 			stepStatus.Status = StepStatusFail
 			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
-			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 			return err
 		}
 		err = r.runCommand("/wcp-elk/kibana/examples/security", "sh", "./install.sh", "observability")
@@ -128,7 +174,7 @@ func (r *SvElkReconciler) installKibana(ctx context.Context, svelkInstance *elkv
 			r.Log.Error(err, errMsg)
 			stepStatus.Status = StepStatusFail
 			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
-			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 			return err
 		}
 		// Success case
@@ -136,7 +182,7 @@ func (r *SvElkReconciler) installKibana(ctx context.Context, svelkInstance *elkv
 		stepStatus.ErrorMsg = ""
 		err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 		if err != nil {
-			r.Log.Error(err, "Failed to mark INSTALL_KIBANA as success.")
+			r.Log.Error(err, "Failed to mark KIBANA_INSTALL as success.")
 			return err
 		}
 	}
@@ -156,7 +202,7 @@ func (r *SvElkReconciler) installElasticSearch(ctx context.Context, svelkInstanc
 			r.Log.Error(err, errMsg)
 			stepStatus.Status = StepStatusFail
 			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
-			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 			return err
 		}
 		err = r.runCommand("/wcp-elk/elasticsearch/examples/security", "sh", "./install.sh", "observability")
@@ -165,7 +211,7 @@ func (r *SvElkReconciler) installElasticSearch(ctx context.Context, svelkInstanc
 			r.Log.Error(err, errMsg)
 			stepStatus.Status = StepStatusFail
 			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
-			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 			return err
 		}
 		// Success case
@@ -193,7 +239,7 @@ func (r *SvElkReconciler) createEsSecrets(ctx context.Context, svelkInstance *el
 			r.Log.Error(err, errMsg)
 			stepStatus.Status = StepStatusFail
 			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
-			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 			return err
 		}
 		err = r.runCommand("/wcp-elk/elasticsearch/examples/security", "sh", "./create_secrets.sh", "observability")
@@ -202,7 +248,7 @@ func (r *SvElkReconciler) createEsSecrets(ctx context.Context, svelkInstance *el
 			r.Log.Error(err, errMsg)
 			stepStatus.Status = StepStatusFail
 			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
-			err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
 			return err
 		}
 		// Success case
