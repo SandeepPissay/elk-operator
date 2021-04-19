@@ -23,7 +23,12 @@ import (
 	"github.com/go-logr/logr"
 	"io"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	"os"
 	"os/exec"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -127,7 +132,61 @@ func (r *SvElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		r.Log.Error(err, "Failed to install ApmServer. Requeuing after 30 seconds.")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
+	go r.pollTkcAndDeployElk()
 	return ctrl.Result{}, err
+}
+
+func (r *SvElkReconciler) pollTkcAndDeployElk() {
+	ticker := time.NewTicker(time.Duration(10) * time.Second)
+	defer ticker.Stop()
+	for {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			r.Log.Error(err, "Cannot get in cluster config. Will retry in 10 seconds")
+			time.Sleep(time.Duration(10) * time.Second)
+			continue
+		}
+
+		dynamicClient, err := dynamic.NewForConfig(config)
+		if err != nil {
+			r.Log.Error(err, "Cannot get dynamic client from the in cluster config. Will retry in 10 seconds")
+			time.Sleep(time.Duration(10) * time.Second)
+			continue
+		}
+
+		tkcRes := schema.GroupVersionResource{
+			Group:    "run.tanzu.vmware.com",
+			Version:  "v1alpha1",
+			Resource: "tanzukubernetesclusters",
+		}
+
+		select {
+		case <-ticker.C:
+			r.Log.Info("In pollTkcAndDeployElk")
+			tkcList, err := dynamicClient.Resource(tkcRes).List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				r.Log.Error(err, "Error while listing tkcs.")
+				continue
+			}
+			for _, d := range tkcList.Items {
+				r.Log.Info(fmt.Sprintf("Object: %+v", d.Object))
+				phase, found, err := unstructured.NestedString(d.Object, "status", "phase")
+				if err != nil {
+					r.Log.Error(err, "Error while parsing status.phase.")
+					continue
+				}
+				if found {
+					if phase == "running" {
+						r.Log.Info(fmt.Sprintf("TKC %s is found and running", d.GetName()))
+					} else {
+						r.Log.Info(fmt.Sprintf("TKC %s is found but not running. Phase: %s", d.GetName(), phase))
+					}
+				} else {
+					r.Log.Info(fmt.Sprintf("TKC %s is not found", d.GetName()))
+				}
+			}
+		}
+	}
 }
 
 func (r *SvElkReconciler) installApmServer(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
