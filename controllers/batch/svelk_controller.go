@@ -23,6 +23,7 @@ import (
 	"github.com/SandeepPissay/elk-operator/apis/elk.vmware.com/v1alpha1"
 	"github.com/go-logr/logr"
 	"io"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -133,12 +134,14 @@ func (r *SvElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		r.Log.Error(err, "Failed to install ApmServer. Requeuing after 30 seconds.")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
+	// Finally start a go routine that polls all the TKCs and creates a TkcElk CR per TKC that deploys
+	// the elastic beats into the TKC.
 	go r.pollTkcAndDeployElk()
 	return ctrl.Result{}, err
 }
 
 func (r *SvElkReconciler) pollTkcAndDeployElk() {
-	ticker := time.NewTicker(time.Duration(10) * time.Second)
+	ticker := time.NewTicker(time.Duration(30) * time.Second)
 	defer ticker.Stop()
 	for {
 		config, err := rest.InClusterConfig()
@@ -147,7 +150,13 @@ func (r *SvElkReconciler) pollTkcAndDeployElk() {
 			time.Sleep(time.Duration(10) * time.Second)
 			continue
 		}
-
+		esSvc := &v1.Service{}
+		err = r.Client.Get(context.TODO(), client.ObjectKey{Namespace: "observability", Name: "security-master"}, esSvc)
+		if err != nil {
+			r.Log.Error(err, "Cannot get elastic search service. Will retry in 10 seconds")
+			time.Sleep(time.Duration(10) * time.Second)
+			continue
+		}
 		dynamicClient, err := dynamic.NewForConfig(config)
 		if err != nil {
 			r.Log.Error(err, "Cannot get dynamic client from the in cluster config. Will retry in 10 seconds")
@@ -155,22 +164,19 @@ func (r *SvElkReconciler) pollTkcAndDeployElk() {
 			continue
 		}
 
-		tkcRes := schema.GroupVersionResource{
-			Group:    "run.tanzu.vmware.com",
-			Version:  "v1alpha1",
-			Resource: "tanzukubernetesclusters",
-		}
-
 		select {
 		case <-ticker.C:
 			r.Log.Info("In pollTkcAndDeployElk")
-			tkcList, err := dynamicClient.Resource(tkcRes).List(context.TODO(), metav1.ListOptions{})
+			tkcList, err := dynamicClient.Resource(schema.GroupVersionResource{
+				Group:    "run.tanzu.vmware.com",
+				Version:  "v1alpha1",
+				Resource: "tanzukubernetesclusters",
+			}).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				r.Log.Error(err, "Error while listing tkcs.")
 				continue
 			}
 			for _, d := range tkcList.Items {
-				r.Log.Info(fmt.Sprintf("Object: %+v", d.Object))
 				phase, found, err := unstructured.NestedString(d.Object, "status", "phase")
 				if err != nil {
 					r.Log.Error(err, "Error while parsing status.phase.")
@@ -188,7 +194,9 @@ func (r *SvElkReconciler) pollTkcAndDeployElk() {
 								Name:      d.GetName(),
 								Namespace: d.GetNamespace(),
 							},
-							Spec: v1alpha1.TkcElkSpec{},
+							Spec: v1alpha1.TkcElkSpec{
+								EsIpAddress: esSvc.Status.LoadBalancer.Ingress[0].IP,
+							},
 						}
 						err = r.Client.Create(context.TODO(), tkcCr)
 						if err != nil {

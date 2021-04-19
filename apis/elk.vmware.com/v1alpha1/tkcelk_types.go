@@ -28,14 +28,20 @@ type TkcElkSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of TkcElk. Edit tkcelk_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	EsIpAddress string `json:"esipaddress,omitempty"`
+}
+
+type StepStatus struct {
+	Step     string `json:"step"`
+	Status   string `json:"status"`
+	ErrorMsg string `json:"errormsg,omitempty"`
 }
 
 // TkcElkStatus defines the observed state of TkcElk
 type TkcElkStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	StepStatusDetails []StepStatus `json:"stepstatusdetails,omitempty"`
 }
 
 //+kubebuilder:object:root=true
