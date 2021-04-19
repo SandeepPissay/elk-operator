@@ -41,10 +41,11 @@ type SvElkReconciler struct {
 }
 
 const (
-	EsCreateSecret  = "ES_CREATE_SECRET"
-	EsInstall       = "ES_INSTALL"
-	KibanaInstall   = "KIBANA_INSTALL"
-	FileBeatInstall = "FILEBEAT_INSTALL"
+	EsCreateSecret    = "ES_CREATE_SECRET"
+	EsInstall         = "ES_INSTALL"
+	KibanaInstall     = "KIBANA_INSTALL"
+	FileBeatInstall   = "FILEBEAT_INSTALL"
+	MetricBeatInstall = "METRICBEAT_INSTALL"
 
 	StepStatusPass = "PASS"
 	StepStatusFail = "FAIL"
@@ -112,7 +113,50 @@ func (r *SvElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
+	// Step 5: Install metric beats to collect metrics.
+	err = r.installMetricBeat(ctx, svelkInstance)
+	if err != nil {
+		r.Log.Error(err, "Failed to install MetricBeat. Requeuing after 30 seconds.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
 	return ctrl.Result{}, err
+}
+
+func (r *SvElkReconciler) installMetricBeat(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
+	stepStatus := r.getStepStatus(svelkInstance, MetricBeatInstall)
+	if stepStatus == nil {
+		stepStatus = &elkv1alpha1.StepStatus{Step: MetricBeatInstall}
+		svelkInstance.Status.StepStatusDetails = append(svelkInstance.Status.StepStatusDetails, *stepStatus)
+	}
+	if stepStatus.Status != StepStatusPass {
+		err := r.runCommand("/wcp-elk/metricbeat/examples/security", "sh", "./cleanup.sh", "observability")
+		if err != nil {
+			errMsg := "failed to cleanup metricbeat."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		err = r.runCommand("/wcp-elk/metricbeat/examples/security", "sh", "./install.sh", "observability")
+		if err != nil {
+			errMsg := "failed to install metricbeat."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		// Success case
+		stepStatus.Status = StepStatusPass
+		stepStatus.ErrorMsg = ""
+		err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+		if err != nil {
+			r.Log.Error(err, "Failed to mark METRICBEAT_INSTALL as success.")
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *SvElkReconciler) installFileBeat(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
