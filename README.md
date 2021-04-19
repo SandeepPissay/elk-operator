@@ -1,2 +1,2 @@
 # elk-operator
-ELK Operator
+ELK Operator for vSphere with Tanzu.
