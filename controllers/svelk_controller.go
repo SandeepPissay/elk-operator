@@ -46,6 +46,7 @@ const (
 	KibanaInstall     = "KIBANA_INSTALL"
 	FileBeatInstall   = "FILEBEAT_INSTALL"
 	MetricBeatInstall = "METRICBEAT_INSTALL"
+	ApmServerInstall  = "APMSERVER_INSTALL"
 
 	StepStatusPass = "PASS"
 	StepStatusFail = "FAIL"
@@ -119,7 +120,51 @@ func (r *SvElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		r.Log.Error(err, "Failed to install MetricBeat. Requeuing after 30 seconds.")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
+
+	// Step 6: Install apm-server to collect traces.
+	err = r.installApmServer(ctx, svelkInstance)
+	if err != nil {
+		r.Log.Error(err, "Failed to install ApmServer. Requeuing after 30 seconds.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
 	return ctrl.Result{}, err
+}
+
+func (r *SvElkReconciler) installApmServer(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
+	stepStatus := r.getStepStatus(svelkInstance, ApmServerInstall)
+	if stepStatus == nil {
+		stepStatus = &elkv1alpha1.StepStatus{Step: ApmServerInstall}
+		svelkInstance.Status.StepStatusDetails = append(svelkInstance.Status.StepStatusDetails, *stepStatus)
+	}
+	if stepStatus.Status != StepStatusPass {
+		err := r.runCommand("/wcp-elk/apm-server/examples/security", "sh", "./cleanup.sh", "observability")
+		if err != nil {
+			errMsg := "failed to cleanup apm-server."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		err = r.runCommand("/wcp-elk/apm-server/examples/security", "sh", "./install.sh", "observability")
+		if err != nil {
+			errMsg := "failed to install apm-server."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+			return err
+		}
+		// Success case
+		stepStatus.Status = StepStatusPass
+		stepStatus.ErrorMsg = ""
+		err = r.updateSvElkInstance(ctx, svelkInstance, stepStatus)
+		if err != nil {
+			r.Log.Error(err, "Failed to mark APMSERVER_INSTALL as success.")
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *SvElkReconciler) installMetricBeat(ctx context.Context, svelkInstance *elkv1alpha1.SvElk) error {
