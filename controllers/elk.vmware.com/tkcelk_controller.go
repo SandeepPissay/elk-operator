@@ -42,8 +42,9 @@ type TkcElkReconciler struct {
 }
 
 const (
-	TkcSetup        = "TKC_SETUP"
-	FileBeatInstall = "FILEBEAT_INSTALL"
+	TkcSetup          = "TKC_SETUP"
+	FileBeatInstall   = "FILEBEAT_INSTALL"
+	MetricBeatInstall = "METRICBEAT_INSTALL"
 
 	StepStatusPass = "PASS"
 	StepStatusFail = "FAIL"
@@ -90,6 +91,13 @@ func (r *TkcElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		r.Log.Error(err, "Failed to install filebeat. Requeuing after 30 seconds.")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
+
+	// Step 3: Install metric beats in TKC.
+	err = r.installMetricBeat(ctx, tkcElkInstance)
+	if err != nil {
+		r.Log.Error(err, "Failed to install metricbeat. Requeuing after 30 seconds.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -126,6 +134,45 @@ func (r *TkcElkReconciler) installFileBeat(ctx context.Context, tkcElkInstance *
 		err = r.updateTkcElkInstance(ctx, tkcElkInstance, stepStatus)
 		if err != nil {
 			r.Log.Error(err, "Failed to mark FILEBEAT_INSTALL as success.")
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *TkcElkReconciler) installMetricBeat(ctx context.Context, tkcElkInstance *elkvmwarecomv1alpha1.TkcElk) error {
+	stepStatus := r.getStepStatus(tkcElkInstance, MetricBeatInstall)
+	if stepStatus == nil {
+		stepStatus = &elkvmwarecomv1alpha1.StepStatus{Step: MetricBeatInstall}
+		tkcElkInstance.Status.StepStatusDetails = append(tkcElkInstance.Status.StepStatusDetails, *stepStatus)
+	}
+	if stepStatus.Status != StepStatusPass {
+		err := r.runCommand("/tkgs-elk/metricbeat/examples/security", "sh", "./cleanup.sh",
+			tkcElkInstance.Namespace, tkcElkInstance.Name, "observability")
+		if err != nil {
+			errMsg := "failed to cleanup metricbeat."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateTkcElkInstance(ctx, tkcElkInstance, stepStatus)
+			return err
+		}
+		err = r.runCommand("/tkgs-elk/metricbeat/examples/security", "sh", "./install.sh",
+			tkcElkInstance.Namespace, tkcElkInstance.Name, "observability", tkcElkInstance.Spec.EsIpAddress)
+		if err != nil {
+			errMsg := "failed to install metricbeat TKC."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateTkcElkInstance(ctx, tkcElkInstance, stepStatus)
+			return err
+		}
+		// Success case
+		stepStatus.Status = StepStatusPass
+		stepStatus.ErrorMsg = ""
+		err = r.updateTkcElkInstance(ctx, tkcElkInstance, stepStatus)
+		if err != nil {
+			r.Log.Error(err, "Failed to mark METRICBEAT_INSTALL as success.")
 			return err
 		}
 	}

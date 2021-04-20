@@ -35,6 +35,7 @@ import (
 	"os/exec"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sync"
 	"time"
 
 	elkv1alpha1 "github.com/SandeepPissay/elk-operator/apis/batch/v1alpha1"
@@ -46,6 +47,9 @@ type SvElkReconciler struct {
 	Log    logr.Logger
 	Scheme *runtime.Scheme
 }
+
+var mutex sync.Mutex
+var tkcPollStarted bool
 
 const (
 	EsCreateSecret    = "ES_CREATE_SECRET"
@@ -136,7 +140,13 @@ func (r *SvElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	// Finally start a go routine that polls all the TKCs and creates a TkcElk CR per TKC that deploys
 	// the elastic beats into the TKC.
-	go r.pollTkcAndDeployElk()
+	mutex.Lock()
+	defer mutex.Unlock()
+	// Go routine needs to be created just once.
+	if tkcPollStarted == false {
+		go r.pollTkcAndDeployElk()
+		tkcPollStarted = true
+	}
 	return ctrl.Result{}, err
 }
 
