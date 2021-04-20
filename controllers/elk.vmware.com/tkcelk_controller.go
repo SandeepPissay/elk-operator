@@ -42,7 +42,8 @@ type TkcElkReconciler struct {
 }
 
 const (
-	TkcSetup = "TKC_SETUP"
+	TkcSetup        = "TKC_SETUP"
+	FileBeatInstall = "FILEBEAT_INSTALL"
 
 	StepStatusPass = "PASS"
 	StepStatusFail = "FAIL"
@@ -77,15 +78,61 @@ func (r *TkcElkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	r.Log.Info(fmt.Sprintf("Loaded tkcElkInstance: %+v", tkcElkInstance))
 
 	// Step 1: Setup elastic beats in TKC.
-	err = r.SetupTkc(ctx, tkcElkInstance)
+	err = r.setupTkc(ctx, tkcElkInstance)
 	if err != nil {
 		r.Log.Error(err, "Failed to setup TKC. Requeuing after 30 seconds.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
+
+	// Step 2: Install file beats in TKC.
+	err = r.installFileBeat(ctx, tkcElkInstance)
+	if err != nil {
+		r.Log.Error(err, "Failed to install filebeat. Requeuing after 30 seconds.")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 	return ctrl.Result{}, nil
 }
 
-func (r *TkcElkReconciler) SetupTkc(ctx context.Context, tkcElkInstance *elkvmwarecomv1alpha1.TkcElk) error {
+func (r *TkcElkReconciler) installFileBeat(ctx context.Context, tkcElkInstance *elkvmwarecomv1alpha1.TkcElk) error {
+	stepStatus := r.getStepStatus(tkcElkInstance, FileBeatInstall)
+	if stepStatus == nil {
+		stepStatus = &elkvmwarecomv1alpha1.StepStatus{Step: FileBeatInstall}
+		tkcElkInstance.Status.StepStatusDetails = append(tkcElkInstance.Status.StepStatusDetails, *stepStatus)
+	}
+	if stepStatus.Status != StepStatusPass {
+		err := r.runCommand("/tkgs-elk/filebeat/examples/security", "sh", "./cleanup.sh",
+			tkcElkInstance.Namespace, tkcElkInstance.Name, "observability")
+		if err != nil {
+			errMsg := "failed to cleanup filebeat."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateTkcElkInstance(ctx, tkcElkInstance, stepStatus)
+			return err
+		}
+		err = r.runCommand("/tkgs-elk/filebeat/examples/security", "sh", "./install.sh",
+			tkcElkInstance.Namespace, tkcElkInstance.Name, "observability", tkcElkInstance.Spec.EsIpAddress)
+		if err != nil {
+			errMsg := "failed to install filebeat TKC."
+			r.Log.Error(err, errMsg)
+			stepStatus.Status = StepStatusFail
+			stepStatus.ErrorMsg = fmt.Sprintf(errMsg+": %+v", err)
+			r.updateTkcElkInstance(ctx, tkcElkInstance, stepStatus)
+			return err
+		}
+		// Success case
+		stepStatus.Status = StepStatusPass
+		stepStatus.ErrorMsg = ""
+		err = r.updateTkcElkInstance(ctx, tkcElkInstance, stepStatus)
+		if err != nil {
+			r.Log.Error(err, "Failed to mark FILEBEAT_INSTALL as success.")
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *TkcElkReconciler) setupTkc(ctx context.Context, tkcElkInstance *elkvmwarecomv1alpha1.TkcElk) error {
 	stepStatus := r.getStepStatus(tkcElkInstance, TkcSetup)
 	if stepStatus == nil {
 		stepStatus = &elkvmwarecomv1alpha1.StepStatus{Step: TkcSetup}
@@ -115,7 +162,7 @@ func (r *TkcElkReconciler) SetupTkc(ctx context.Context, tkcElkInstance *elkvmwa
 		stepStatus.ErrorMsg = ""
 		err = r.updateTkcElkInstance(ctx, tkcElkInstance, stepStatus)
 		if err != nil {
-			r.Log.Error(err, "Failed to mark ES_INSTALL as success.")
+			r.Log.Error(err, "Failed to mark TKC_SETUP as success.")
 			return err
 		}
 	}
