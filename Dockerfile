@@ -11,20 +11,25 @@ RUN go mod download
 
 # Copy the go source
 COPY main.go main.go
-COPY api/ api/
+COPY apis/ apis/
 COPY controllers/ controllers/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager main.go
-RUN git clone https://github.com/SandeepPissay/helm-charts.git wcp-elk && cd wcp-elk && git checkout -t remotes/origin/wcp-elk && \
-    cd /workspace && curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 && chmod 700 get_helm.sh && ./get_helm.sh
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager main.go && \
+    git clone https://github.com/SandeepPissay/helm-charts.git wcp-elk && cd wcp-elk && git checkout -t remotes/origin/wcp-elk && cd /workspace && \
+    git clone https://github.com/SandeepPissay/helm-charts.git tkgs-elk && cd tkgs-elk && git checkout -t remotes/origin/tkgs-elk
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM ubuntu:20.04
 WORKDIR /
-COPY --from=builder /workspace/manager .
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -LO https://dl.k8s.io/release/v1.21.0/bin/linux/amd64/kubectl && chmod +x kubectl && mv kubectl /usr/local/bin/ && \
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 && chmod 700 get_helm.sh && ./get_helm.sh
 COPY --from=builder /workspace/wcp-elk/ wcp-elk/
+COPY --from=builder /workspace/tkgs-elk/ tkgs-elk/
+COPY --from=builder /workspace/manager .
 #USER 65532:65532
 
 ENTRYPOINT ["/manager"]
