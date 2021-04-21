@@ -22,8 +22,8 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
-# TODO: Used only during testing to speed up development. Pod runs faster on SV master VM rather than as Pod VM.
-      hostNetwork: true
+# TODO: Used only during testing to speed up development. Pod come up faster on SV master VM rather than as Pod VM.
+#      hostNetwork: true
 #      securityContext:
 #        runAsNonRoot: true
       containers:
@@ -37,7 +37,7 @@ spec:
         image: controller:latest
         name: manager
         securityContext:
-          allowPrivilegeEscalation: false
+          allowPrivilegeEscalation: true
         livenessProbe:
           httpGet:
             path: /healthz
@@ -60,13 +60,13 @@ spec:
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
 # TODO: Remove this when the operator needs to be run in workload namespace.
-      tolerations:
-        - effect: NoSchedule
-          key: node-role.kubernetes.io/master
-          operator: Exists
-        - effect: NoSchedule
-          key: kubeadmNode
-          operator: Equal
-          value: master
-      nodeSelector:
-        node-role.kubernetes.io/master: ""
+#      tolerations:
+#        - effect: NoSchedule
+#          key: node-role.kubernetes.io/master
+#          operator: Exists
+#        - effect: NoSchedule
+#          key: kubeadmNode
+#          operator: Equal
+#          value: master
+#      nodeSelector:
+#        node-role.kubernetes.io/master: ""

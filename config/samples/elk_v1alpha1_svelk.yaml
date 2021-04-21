@@ -2,6 +2,7 @@ apiVersion: elk.vmware.com/v1alpha1
 kind: SvElk
 metadata:
   name: elk
+  namespace: elk-operator-system
 spec:
   persistencestoragepolicy: "vsan-default-storage-policy"
   disksizeperreplica: "30Gi"

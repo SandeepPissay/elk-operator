@@ -1,7 +1,7 @@
 apiVersion: elk.vmware.com.vmware.com/v1alpha1
 kind: TkcElk
 metadata:
-  name: tkcelk-sample
+  name: tkc-dev1
+  namespace: tkc-ns1
 spec:
-  # Add fields here
-  foo: bar
+  esipaddress: 192.168.123.2

@@ -193,8 +193,8 @@ func (r *SvElkReconciler) pollTkcAndDeployElk() {
 					continue
 				}
 				if found {
-					if phase == "running" {
-						r.Log.Info(fmt.Sprintf("TKC %s is found and running", d.GetName()))
+					if phase == "running" || phase == "updating" {
+						r.Log.Info(fmt.Sprintf("TKC %s is found and is running/updating. Deploying ELK stack on the TKC..", d.GetName()))
 						tkcCr := &v1alpha1.TkcElk{
 							TypeMeta: metav1.TypeMeta{
 								Kind:       "TkcElk",
