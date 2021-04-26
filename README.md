@@ -1,9 +1,11 @@
 # elk-operator
+ELK Operator for Kubernetes on vSphere.
+
+# elk-operator for vSphere with Tanzu
 ELK Operator for vSphere with Tanzu does the following -
 - Deploys a highly available and secure ELK stack in the supervisor cluster that includes Elastic Search, Kibana, Filebeat, Metricbeat and APM-server.
 - Automatically detects running TKG service clusters in the supervisor cluster and deploys the Filebeat, Metricbeat and APM-server that pushes data from TKG service cluster to the central elastic search data service deployed in the supervisor cluster.
 
-# elk-operator for vSphere with Tanzu
 ## Why ELK for vSphere with Tanzu
 vSphere with Tanzu solution offers customers to deploy their traditional and modern workloads on vSphere. This stack contains the core vSphere product, the supervisor cluster and Tanzu services(TKGS clusters). While working on CSI and CNS components in this stack, we realized few gaps in the way we are building these components, testing it and also debugging issues. Currently devs rely on support bundles to root cause issues, stabilize the product during development, and also to support VMware customers. This is not efficient for many reasons:
 - Kubernetes and CSI logs get rolled over very quickly. There are many examples where devs ask for a repro since the error state is no longer available. In fact, on many occasions we ask for support bundle/logs only to realize that we do not have the logs for the time when the issue is observed thereby delaying the root cause analysis.
