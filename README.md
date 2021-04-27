@@ -35,6 +35,7 @@ Note: None of the steps will be required once the vSphere with Tanzu product and
 4. Create the SvElk CR to trigger the operator to deploy the ELK stack:
 
 `$ kubectl create -f config/samples/elk_v1alpha1_svelk.yaml`
+
 5. Wait for the elastic search, Kibana, metricbeat and apm-server pods in "observability" namespace to reach "running" status. Wait for the filebeat pods in "vmware-system-beats" namespace to reach "running" stattus. 
 
 It takes around less than 10 mins to fully deploy the ELK stack on vSphere with Tanzu running a virtual infrastructure. The elk-operator then watches for any existing or new TKGS cluster and deploys ELK stack automatically in it.
